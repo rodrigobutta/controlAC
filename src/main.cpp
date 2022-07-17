@@ -263,7 +263,8 @@ void sendStateToIr() {
       ac.setMode(MODE_DRY);
     }
     else if(state[modeKey] == "fan_only") {
-      ac.setMode(MODE_FAN); ac.setFan(FAN_HI);
+      ac.setMode(MODE_FAN);
+      ac.setFan(FAN_HI);
     }
     // if (acState.operation == 0) {
     //   ac.setMode(MODE_AUTO);
@@ -388,6 +389,18 @@ void mqttLoop() {
   client.loop();
 }
 
+
+void irSetup() {
+ ac.begin();
+
+#if DECODE_HASH
+  // Ignore messages with less than minimum on or off pulses.
+  irrecv.setUnknownThreshold(kMinUnknownSize);
+#endif  // DECODE_HASH
+  irrecv.setTolerance(kTolerancePercentage);  // Override the default tolerance.
+  irrecv.enableIRIn();  // Start the receiver
+}
+
 // ########################################################
 // MAIN
 // ########################################################
@@ -403,16 +416,7 @@ void setup() {
 
   wifiSetup();
   mqttSetup();
-  
-  ac.begin();
-
-
-#if DECODE_HASH
-  // Ignore messages with less than minimum on or off pulses.
-  irrecv.setUnknownThreshold(kMinUnknownSize);
-#endif  // DECODE_HASH
-  irrecv.setTolerance(kTolerancePercentage);  // Override the default tolerance.
-  irrecv.enableIRIn();  // Start the receiver
+  irSetup();
 }
 
 
@@ -446,7 +450,7 @@ void statusLedLoop() {
 
 
 void irReceiverLoop() {
-  if (sendingIR = false && irrecv.decode(&results)) {   
+  if (sendingIR == false && irrecv.decode(&results)) {   
     stdAc::state_t decodedIr, p; 
     IRAcUtils::decodeToState(&results, &decodedIr, &p);
 
@@ -459,9 +463,6 @@ void irReceiverLoop() {
     Serial.println(powerStr);
 
     Serial.print("Mode: ");
-
-
- 
     String modeStr;
     switch (decodedIr.mode) {
       case stdAc::opmode_t::kOff:  modeStr = "off"; break;
@@ -549,9 +550,9 @@ void irReceiverLoop() {
 
     broadcastState();
 
-    yield();  // Feed the WDT as the text output can take a while to print.
-    Serial.println();    // Blank line between entries
-    yield();             // Feed the WDT (again)
+    // yield();  // Feed the WDT as the text output can take a while to print.
+    // Serial.println();    // Blank line between entries
+    // yield();             // Feed the WDT (again)
   }
 }
 
