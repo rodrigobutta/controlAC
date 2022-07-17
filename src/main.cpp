@@ -1,7 +1,28 @@
+#include <Arduino.h>
 #include <IRremoteESP8266.h>
 #include <IRsend.h>
+#include <Wire.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include <string>
+#include "settings.h"
+#include "wifiConnection.h"
 
 #include <ir_LG.h>  //  replace library based on your AC unit model, check https://github.com/crankyoldgit/IRremoteESP8266
+
+#define STATUS_LED_GPIO 2
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+StaticJsonDocument<1200> state;
+
+long refreshPrevMillis = 0;
+
+int statusLedState = LOW;             // statusLedState used to set the LED
+unsigned long statusLedPrevMillis = 0;        // will store last time LED was updated
+
+// int temp = 0;             // statusLedState used to set the LED
+
 
 // const uint8_t kLgAcFanLowest = 0;  // 0b0000
 // const uint8_t kLgAcFanLow = 1;     // 0b0001
@@ -89,15 +110,28 @@ IRLgAc ac(kIrLed);
 // settings
 char deviceName[] = "AC Remote Control";
 
-void setup() {
-  Serial.begin(115200);
-  
-  Serial.println("Begin Ac..");
-  
-  ac.begin();
+
+const std::string tempKey = "temp";
+const std::string modeKey = "mode";
+
+
+void mqttSend(char* topic, char* message) {
+    Serial.print("MQTT SEND: ");
+    Serial.println(message);
+    client.publish(topic, message);
 }
 
-void loop() {
+void broadcastState() {
+ 
+  char jsonString[256]; // max 256 o no se manda el MQTT!!!!  
+  serializeJson(state, jsonString);
+
+  mqttSend("esp32/ac/state", jsonString);
+}
+
+void sendCommandToAC(int switchNumber) {
+
+
   Serial.println("Send AC TEMP!!");
 
   // if (acState.powerStatus) {
@@ -134,31 +168,170 @@ void loop() {
     // ac.off();
   // }
   ac.send();
+}
 
-  delay(2000);
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived on topic: ");
+  Serial.print(topic);
+  Serial.print(". Message: ");
+  
+  char payloadString[length+1];
+ 
+  int i=0;
+  for (i=0;i<length;i++) {
+    Serial.print((char)payload[i]);
+    payloadString[i]=(char)payload[i];
+  }
+  payloadString[i] = 0; // Null termination
+  Serial.println();
+  
+  
+  StaticJsonDocument <256> payloadJson;
+  deserializeJson(payloadJson,payload);
+   
+  if (String(topic) == "esp32/ac/set") {
 
-  ac.on();
-  ac.setTemp(21);
-  ac.setMode(MODE_HEAT);
-  ac.setFan(FAN_HI);
-  ac.send();
+      if(payloadJson.containsKey(tempKey)) {
+        const int tempValue = payloadJson[tempKey];
+        if (tempValue) {
+          Serial.println(">> Updating TEMPERATURE...");
+          state[tempKey] = tempValue;
+        }
+      }
 
-  delay(2000);
+      if(payloadJson.containsKey(modeKey)) {
+        const String modeValue = payloadJson[modeKey];
+        if (modeValue) {
+          if (modeValue.length() > 1) {
+            Serial.println(">> Updating MODE...");
+            state[modeKey] = modeValue;
+          }
+        }
+      }
 
-  ac.on();
-  ac.setTemp(22);
-  ac.setMode(MODE_HEAT);
-  ac.setFan(FAN_HI);
-  ac.send();
+          
+    // al final de todo el proceso, porque si va en el medio corta el resto
+    broadcastState();
+  }
 
-  delay(2000);
+}
 
-  ac.on();
-  ac.setTemp(21);
-  ac.setMode(MODE_HEAT);
-  ac.setFan(FAN_HI);
-  ac.send();
+void mqttReconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect("ESP32_AC",MQTT_USER,MQTT_PASSWORD)) {
+      Serial.println("MQTT connected");
 
-  delay(2000);
+      // Subscribe
+      client.subscribe("esp32/ac/set");
+      
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(10000);
+    }
+  }
+}
+
+
+void mqttSetup() {
+  client.setServer(MQTT_HOST, 1883);
+  client.setCallback(mqttCallback);
+}
+
+void mqttLoop() {
+  if (!client.connected()) {
+    mqttReconnect();
+  }
+  client.loop();
+}
+
+// ########################################################
+// MAIN
+// ########################################################
+
+
+void setup() {
+
+  pinMode(STATUS_LED_GPIO, OUTPUT);
+  digitalWrite(STATUS_LED_GPIO, HIGH);
+
+  Serial.begin(115200);
+  Serial.println("Hello Rodrigo Butta");
+
+  
+  wifiSetup();
+  mqttSetup();
+  
+  ac.begin();
+}
+
+
+void refreshLoop() {
+    // Convert the value to a char array
+    char tempString[8];
+    dtostrf(state[tempKey], 1, 2, tempString);
+    Serial.print("Temperature: ");
+    Serial.print(tempString);
+    Serial.println();
+
+    char modeString[8];
+    dtostrf(state[modeKey], 1, 2, modeString);
+    Serial.print("Mode: ");
+    Serial.print(modeString);
+    Serial.println();
+
+
+}
+
+
+void statusLedLoop() {
+
+  if (statusLedState == LOW) {
+    statusLedState = HIGH;
+  } else {
+    statusLedState = LOW;
+  }
+
+  digitalWrite(STATUS_LED_GPIO, statusLedState);
+
+}
+
+void loop() {
+  mqttLoop();
+
+  unsigned long currentMillis = millis();
+
+
+  if (currentMillis - refreshPrevMillis > 5000) {
+    refreshPrevMillis = currentMillis;
+    
+    refreshLoop();
+  }
+
+  long interval = 2000;
+  if(!client.connected()) {
+    interval = 300;
+  }
+
+  if (currentMillis - statusLedPrevMillis >= 1000) {
+    statusLedPrevMillis = currentMillis;
+
+    statusLedLoop();
+
+  }
+
+
+
+  // ac.on();
+  // ac.setTemp(21);
+  // ac.setMode(MODE_HEAT);
+  // ac.setFan(FAN_HI);
+  // ac.send();
+
 
 }
