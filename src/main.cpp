@@ -211,6 +211,8 @@ const std::string tempKey = "temp";
 const std::string modeKey = "mode";
 const std::string fanKey = "fan";
 
+bool sendingIR = false;
+
 
 void mqttSend(char* topic, char* message) {
     Serial.print("MQTT SEND: ");
@@ -228,16 +230,41 @@ void broadcastState() {
   mqttSend("esp32/ac/sensor/state", "{\"temp\":12}");
 }
 
-void sendCommandToAC(int switchNumber) {
+void sendStateToIr() {
 
+  sendingIR = true;
+  // delay(100);
 
-  Serial.println("Send AC TEMP!!");
+  Serial.println("Send State to AC");
 
-  // if (acState.powerStatus) {
+  if(state[modeKey] == "off") {
+    ac.off();
+  }
+  else{
     ac.on();
-    ac.setTemp(20);
-    ac.setMode(MODE_HEAT);
+
+    ac.setTemp(state[tempKey]);
+    // ac.setMode(MODE_HEAT);
     ac.setFan(FAN_HI);
+
+    if(state[modeKey] == "off") {
+      ac.off();
+    }
+    else if(state[modeKey] == "auto") {
+      ac.setMode(MODE_AUTO);
+    }
+    else if(state[modeKey] == "cool") {
+      ac.setMode(MODE_COOL);
+    }
+    else if(state[modeKey] == "heat") {
+      ac.setMode(MODE_HEAT);
+    }
+    else if(state[modeKey] == "dry") {
+      ac.setMode(MODE_DRY);
+    }
+    else if(state[modeKey] == "fan_only") {
+      ac.setMode(MODE_FAN); ac.setFan(FAN_HI);
+    }
     // if (acState.operation == 0) {
     //   ac.setMode(MODE_AUTO);
     //   ac.setFan(FAN_AUTO);
@@ -263,10 +290,12 @@ void sendCommandToAC(int switchNumber) {
     //     ac.setFan(FAN_HI);
     //   }
     // }
-  // } else {
-    // ac.off();
-  // }
+  }
+    
   ac.send();
+
+  // delay(100);
+  sendingIR = false;
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
@@ -318,8 +347,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         }
       }
 
-          
-    // al final de todo el proceso, porque si va en el medio corta el resto
+    sendStateToIr();
+
     broadcastState();
   }
 
@@ -417,7 +446,7 @@ void statusLedLoop() {
 
 
 void irReceiverLoop() {
-  if (irrecv.decode(&results)) {   
+  if (sendingIR = false && irrecv.decode(&results)) {   
     stdAc::state_t decodedIr, p; 
     IRAcUtils::decodeToState(&results, &decodedIr, &p);
 
@@ -528,8 +557,9 @@ void irReceiverLoop() {
 
 void loop() {
   mqttLoop();
-  irReceiverLoop();
 
+  irReceiverLoop();
+  
   unsigned long currentMillis = millis();
 
 
@@ -550,14 +580,5 @@ void loop() {
     statusLedLoop();
 
   }
-
-
-
-  // ac.on();
-  // ac.setTemp(21);
-  // ac.setMode(MODE_HEAT);
-  // ac.setFan(FAN_HI);
-  // ac.send();
-
 
 }
