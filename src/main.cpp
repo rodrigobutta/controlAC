@@ -127,6 +127,8 @@ void broadcastState() {
   serializeJson(state, jsonString);
 
   mqttSend("esp32/ac/state", jsonString);
+
+  mqttSend("esp32/ac/sensor/state", "{\"temp\":12}");
 }
 
 void sendCommandToAC(int switchNumber) {
