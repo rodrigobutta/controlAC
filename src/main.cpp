@@ -131,71 +131,9 @@ decode_results results;  // Somewhere to store the results
 
 
 
-
-
 // #############################
 // ########## IR SEND ##########
 // #############################
-
-// const uint8_t kLgAcFanLowest = 0;  // 0b0000
-// const uint8_t kLgAcFanLow = 1;     // 0b0001
-// const uint8_t kLgAcFanMedium = 2;  // 0b0010
-// const uint8_t kLgAcFanMax = 4;     // 0b0100
-// const uint8_t kLgAcFanAuto = 5;    // 0b0101
-// const uint8_t kLgAcFanLowAlt = 9;  // 0b1001
-// const uint8_t kLgAcFanHigh = 10;   // 0b1010
-// // Nr. of slots in the look-up table
-// const uint8_t kLgAcFanEntries = kLgAcFanHigh + 1;
-// const uint8_t kLgAcTempAdjust = 15;
-// const uint8_t kLgAcMinTemp = 16;  // Celsius
-// const uint8_t kLgAcMaxTemp = 30;  // Celsius
-// const uint8_t kLgAcCool = 0;  // 0b000
-// const uint8_t kLgAcDry = 1;   // 0b001
-// const uint8_t kLgAcFan = 2;   // 0b010
-// const uint8_t kLgAcAuto = 3;  // 0b011
-// const uint8_t kLgAcHeat = 4;  // 0b100
-// const uint8_t kLgAcPowerOff = 3;  // 0b11
-// const uint8_t kLgAcPowerOn = 0;   // 0b00
-// const uint8_t kLgAcSignature = 0x88;
-
-// const uint32_t kLgAcOffCommand          = 0x88C0051;
-// const uint32_t kLgAcLightToggle         = 0x88C00A6;
-
-// const uint32_t kLgAcSwingVToggle        = 0x8810001;
-// const uint32_t kLgAcSwingSignature      = 0x8813;
-// const uint32_t kLgAcSwingVLowest        = 0x8813048;
-// const uint32_t kLgAcSwingVLow           = 0x8813059;
-// const uint32_t kLgAcSwingVMiddle        = 0x881306A;
-// const uint32_t kLgAcSwingVUpperMiddle   = 0x881307B;
-// const uint32_t kLgAcSwingVHigh          = 0x881308C;
-// const uint32_t kLgAcSwingVHighest       = 0x881309D;
-// const uint32_t kLgAcSwingVSwing         = 0x8813149;
-// const uint32_t kLgAcSwingVAuto          = kLgAcSwingVSwing;
-// const uint32_t kLgAcSwingVOff           = 0x881315A;
-// const uint8_t  kLgAcSwingVLowest_Short      = 0x04;
-// const uint8_t  kLgAcSwingVLow_Short         = 0x05;
-// const uint8_t  kLgAcSwingVMiddle_Short      = 0x06;
-// const uint8_t  kLgAcSwingVUpperMiddle_Short = 0x07;
-// const uint8_t  kLgAcSwingVHigh_Short        = 0x08;
-// const uint8_t  kLgAcSwingVHighest_Short     = 0x09;
-// const uint8_t  kLgAcSwingVSwing_Short       = 0x14;
-// const uint8_t  kLgAcSwingVAuto_Short        = kLgAcSwingVSwing_Short;
-// const uint8_t  kLgAcSwingVOff_Short         = 0x15;
-
-// // AKB73757604 Constants
-// // SwingH
-// const uint32_t kLgAcSwingHAuto            = 0x881316B;
-// const uint32_t kLgAcSwingHOff             = 0x881317C;
-// // SwingV
-// const uint8_t  kLgAcVaneSwingVHighest     = 1;  ///< 0b001
-// const uint8_t  kLgAcVaneSwingVHigh        = 2;  ///< 0b010
-// const uint8_t  kLgAcVaneSwingVUpperMiddle = 3;  ///< 0b011
-// const uint8_t  kLgAcVaneSwingVMiddle      = 4;  ///< 0b100
-// const uint8_t  kLgAcVaneSwingVLow         = 5;  ///< 0b101
-// const uint8_t  kLgAcVaneSwingVLowest      = 6;  ///< 0b110
-// const uint8_t  kLgAcVaneSwingVSize        = 8;
-// const uint8_t  kLgAcSwingVMaxVanes = 4;  ///< Max Nr. of Vanes
-
 
 #define MODE_AUTO kLgAcAuto
 #define MODE_COOL kLgAcCool
@@ -213,13 +151,6 @@ const uint16_t kIrLed = 16;
 // Library initialization, change it according to the imported library file.
 IRLgAc ac(kIrLed);
 
-
-// struct state {
-//   uint8_t temperature = 22, fan = 0, operation = 0;
-//   bool powerStatus;
-// };
-
-
 // settings
 char deviceName[] = "AC Remote Control";
 
@@ -229,16 +160,18 @@ const std::string modeKey = "mode";
 const std::string fanKey = "fan";
 const std::string currentTempKey = "currentTemp";
 
-// bool welcomeBroadcast = false;
-
-
 void mqttSend(char* topic, char* message) {
     Serial.print("Sending MQTT: ");
     Serial.println(message);
-    client.publish(topic, message);
+    client.publish(topic, message, true);
 }
 
 void broadcastState() {
+
+  if(state[tempKey] == 0) {
+    Serial.println("Cancel broadcast due to lack of state data.");
+    return;
+  }
   Serial.println("Broadcasting state to MQTT..");
  
   char jsonString[256]; // max 256 o no se manda el MQTT!!!!  
@@ -249,8 +182,6 @@ void broadcastState() {
 
 void sendStateToIr() {
   Serial.println("Sending IR..");
-
-  // DISABLE INNNN ***
 
   irrecv.disableIRIn();
 
@@ -283,45 +214,17 @@ void sendStateToIr() {
       ac.setMode(MODE_FAN);
       ac.setFan(FAN_HI);
     }
-    // if (acState.operation == 0) {
-    //   ac.setMode(MODE_AUTO);
-    //   ac.setFan(FAN_AUTO);
-    //   acState.fan = 0;
-    // } else if (acState.operation == 1) {
-    //   ac.setMode(MODE_COOL);
-    // } else if (acState.operation == 2) {
-    //   ac.setMode(MODE_DRY);
-    // } else if (acState.operation == 3) {
-    //   ac.setMode(MODE_HEAT);
-    // } else if (acState.operation == 4) {
-    //   ac.setMode(MODE_FAN);
-    // }
-
-    // if (acState.operation != 0) {
-    //   if (acState.fan == 0) {
-    //     ac.setFan(FAN_AUTO);
-    //   } else if (acState.fan == 1) {
-    //     ac.setFan(FAN_MIN);
-    //   } else if (acState.fan == 2) {
-    //     ac.setFan(FAN_MED);
-    //   } else if (acState.fan == 3) {
-    //     ac.setFan(FAN_HI);
-    //   }
-    // }
   }
     
   ac.send();
 
   delay(100);
   irrecv.enableIRIn();
-
-  // ENABLE INNNNNN IR
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.println("Receiving MQTT..");
-  Serial.print("Topic: ");
-  Serial.println(topic);
+  Serial.println(); Serial.println("Receiving MQTT..");
+  Serial.print("Topic: "); Serial.println(topic);
   Serial.print("Payload: ");
   
   char payloadString[length+1];
@@ -343,7 +246,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       if(payloadJson.containsKey(tempKey)) {
         const int tempValue = payloadJson[tempKey];
         if (tempValue) {
-          Serial.println(">> Updating TEMPERATURE...");
+          Serial.print(">> Updating TEMPERATURE: "); Serial.println(tempValue);
           state[tempKey] = tempValue;
         }
       }
@@ -352,7 +255,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         const String modeValue = payloadJson[modeKey];
         if (modeValue) {
           if (modeValue.length() > 1) {
-            Serial.println(">> Updating MODE...");
+            Serial.print(">> Updating MODE: "); Serial.println(modeValue);
             state[modeKey] = modeValue;
           }
         }
@@ -362,7 +265,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         const String fanValue = payloadJson[fanKey];
         if (fanValue) {
           if (fanValue.length() > 1) {
-            Serial.println(">> Updating FAN...");
+            Serial.print(">> Updating FAN: "); Serial.println(fanValue);
             state[fanKey] = fanValue;
           }
         }
@@ -371,6 +274,40 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     sendStateToIr();
 
     broadcastState();
+  }
+
+  if (String(topic) == "esp32/ac/state") {
+    if(state[tempKey] == 0) {
+
+      if(payloadJson.containsKey(tempKey)) {
+        const int tempValue = payloadJson[tempKey];
+        if (tempValue) {
+          Serial.print(">> Updating retained TEMPERATURE: "); Serial.println(tempValue);
+          state[tempKey] = tempValue;
+        }
+      }
+
+      if(payloadJson.containsKey(modeKey)) {
+        const String modeValue = payloadJson[modeKey];
+        if (modeValue) {
+          if (modeValue.length() > 1) {
+            Serial.print(">> Updating retained MODE: "); Serial.println(modeValue);
+            state[modeKey] = modeValue;
+          }
+        }
+      }
+
+      if(payloadJson.containsKey(fanKey)) {
+        const String fanValue = payloadJson[fanKey];
+        if (fanValue) {
+          if (fanValue.length() > 1) {
+            Serial.print(">> Updating retained FAN: "); Serial.println(fanValue);
+            state[fanKey] = fanValue;
+          }
+        }
+      }
+
+    }
   }
 
 }
@@ -386,11 +323,9 @@ void mqttReconnect() {
       // Subscribe
       client.subscribe("esp32/ac/set");
 
-      // if(welcomeBroadcast == false) {
-      //   welcomeBroadcast == true;
-      //   broadcastState();
-      // }
-      
+      // To get the  broker retained status
+      client.subscribe("esp32/ac/state");
+
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -426,10 +361,10 @@ void irSetup() {
   irrecv.enableIRIn();  // Start the receiver
 }
 
+
 // ########################################################
 // MAIN
 // ########################################################
-
 
 void setup() {
 
@@ -443,52 +378,21 @@ void setup() {
   mqttSetup();
   irSetup();
 
-
-  state[tempKey] = 20;
+  state[tempKey] = 0;
   state[modeKey] = "off";
-  state[fanKey] = "max";
+  state[fanKey] = "";
   state[currentTempKey] = 0;
 
-  Serial.print("PIN STATUS:");
-  Serial.println(STATUS_LED_GPIO);
-
-  Serial.print("PIN IR TRANSMITTER:");
-  Serial.println(kIrLed);
-
-  Serial.print("PIN IR RECEIVER:");
-  Serial.println(kRecvPin);
-
-  Serial.print("PIN TEMP SENSOR:");
-  Serial.println(oneWireBus);
+  Serial.print("PIN STATUS:"); Serial.println(STATUS_LED_GPIO);
+  Serial.print("PIN IR TRANSMITTER:"); Serial.println(kIrLed);
+  Serial.print("PIN IR RECEIVER:"); Serial.println(kRecvPin);
+  Serial.print("PIN TEMP SENSOR:"); Serial.println(oneWireBus);
 
   // Start the DS18B20 sensor
   sensors.begin();
 }
 
-
-// void refreshLoop() {
-    // String modeString = state[modeKey];
-    // Serial.print("Mode: ");
-    // Serial.print(modeString);
-    // Serial.println();
-
-    // char tempString[8];
-    // dtostrf(state[tempKey], 1, 2, tempString);
-    // Serial.print("Temperature: ");
-    // Serial.print(tempString);
-    // Serial.println();
-
-    // String fanString = state[fanKey];
-    // Serial.print("Fan: ");
-    // Serial.print(fanString);
-    // Serial.println();
-
-    // broadcastState();
-// }
-
-
 void statusLedLoop() {
-
   if (statusLedState == LOW) {
     statusLedState = HIGH;
   } else {
@@ -496,137 +400,92 @@ void statusLedLoop() {
   }
 
   digitalWrite(STATUS_LED_GPIO, statusLedState);
-
 }
 
-
 void sensorLoop() {
-
   sensors.requestTemperatures(); 
   float newTemp = sensors.getTempCByIndex(0);
 
   // float newTempRounded = round(newTemp * 10.0 ) / 10.0;
   int newTempRounded = newTemp;
-
   if(newTempRounded != state[currentTempKey]) {
-    
-
     state[currentTempKey] = newTempRounded;
     
     broadcastState();
   }
-
-  //  Serial.print(newTemp);
-  // Serial.println("ºC");
 }
-
 
 void irReceiverLoop() {
   if (irrecv.decode(&results)) {   
     Serial.println("Receiving IR..");
 
+    // Display the basic output of what we found.
+    Serial.print(resultToHumanReadableBasic(&results));
+    // Display any extra A/C info if we have it.
+    String description = IRAcUtils::resultAcToString(&results);
+    if (description.length()) Serial.println(D_STR_MESGDESC ": " + description);
+
+
     stdAc::state_t decodedIr, p; 
     IRAcUtils::decodeToState(&results, &decodedIr, &p);
 
-    Serial.print("Power: ");
+    Serial.print("Protocol: "); Serial.println(decodedIr.protocol);
+    Serial.print("Model: "); Serial.println(decodedIr.model);
+
+    if(decodedIr.protocol != decode_type_t::LG2 || decodedIr.model != 3) { // 3 es AKB74955603
+      Serial.println("Not the spected remote");
+      return;
+    }
+
+
     String powerStr;
     switch (decodedIr.power) {
       case true:      powerStr = "on"; break;
       case false:     powerStr = "off"; break;
     }
-    Serial.println(powerStr);
+    Serial.print("Power: "); Serial.println(powerStr);
 
-    Serial.print("Mode: ");
-    String modeStr;
-    switch (decodedIr.mode) {
-      case stdAc::opmode_t::kOff:  modeStr = "off"; break;
-      case stdAc::opmode_t::kAuto: modeStr = "auto"; break;
-      case stdAc::opmode_t::kCool: modeStr = "cool"; break;
-      case stdAc::opmode_t::kHeat: modeStr = "heat"; break;
-      case stdAc::opmode_t::kDry:  modeStr = "dry"; break;
-      case stdAc::opmode_t::kFan:  modeStr = "fan_only"; break;
-      default:                     modeStr = "kUnknownStr";
+    if(decodedIr.power == true) {
+      
+      String modeStr;
+      switch (decodedIr.mode) {
+        case stdAc::opmode_t::kOff:  modeStr = "off"; break;
+        case stdAc::opmode_t::kAuto: modeStr = "auto"; break;
+        case stdAc::opmode_t::kCool: modeStr = "cool"; break;
+        case stdAc::opmode_t::kHeat: modeStr = "heat"; break;
+        case stdAc::opmode_t::kDry:  modeStr = "dry"; break;
+        case stdAc::opmode_t::kFan:  modeStr = "fan_only"; break;
+        default:                     modeStr = "";
+      }Serial.print("Mode: "); Serial.println(modeStr);
+      
+      Serial.print("Temp: "); Serial.println(decodedIr.degrees);
+
+      String fanspeedStr;
+      switch (decodedIr.fanspeed) {
+        case stdAc::fanspeed_t::kAuto:   fanspeedStr = "auto"; break;
+        case stdAc::fanspeed_t::kMax:    fanspeedStr = "max"; break;
+        case stdAc::fanspeed_t::kHigh:   fanspeedStr = "high"; break;
+        case stdAc::fanspeed_t::kMedium: fanspeedStr = "med"; break;
+        case stdAc::fanspeed_t::kLow:    fanspeedStr = "low"; break;
+        case stdAc::fanspeed_t::kMin:    fanspeedStr = "min"; break;
+        default:                         fanspeedStr = "";
+      }
+      Serial.print("Fan: "); Serial.println(fanspeedStr);
+
+      state[tempKey] = decodedIr.degrees;
+      state[modeKey] = modeStr;
+      state[fanKey] = fanspeedStr;
+
+      broadcastState();
     }
-    if(decodedIr.power == false) {
-      modeStr = "off";
+    else {
+
+      state[tempKey] = 0;
+      state[modeKey] = "off";
+      state[fanKey] = "";
+
+      broadcastState();
     }
-    Serial.println(modeStr);
-    
-    Serial.print("Temp: ");
-    Serial.println(decodedIr.degrees);
-
-    Serial.print("Fan: ");
-    String fanspeedStr;
-    switch (decodedIr.fanspeed) {
-      case stdAc::fanspeed_t::kAuto:   fanspeedStr = "auto"; break;
-      case stdAc::fanspeed_t::kMax:    fanspeedStr = "max"; break;
-      case stdAc::fanspeed_t::kHigh:   fanspeedStr = "high"; break;
-      case stdAc::fanspeed_t::kMedium: fanspeedStr = "med"; break;
-      case stdAc::fanspeed_t::kLow:    fanspeedStr = "low"; break;
-      case stdAc::fanspeed_t::kMin:    fanspeedStr = "min"; break;
-      default:                         fanspeedStr = "unknown";
-    }
-    Serial.println(fanspeedStr);
-
-    state[tempKey] = decodedIr.degrees;
-    state[modeKey] = modeStr;
-    state[fanKey] = fanspeedStr;
-
-    // Serial.print("SwingV: ");
-    // String swingvStr;
-    // switch (decodedIr.swingv) {
-    //   case stdAc::swingv_t::kOff:     swingvStr = "kOffStr"; break;
-    //   case stdAc::swingv_t::kAuto:    swingvStr = "kAutoStr"; break;
-    //   case stdAc::swingv_t::kHighest: swingvStr = "kHighestStr"; break;
-    //   case stdAc::swingv_t::kHigh:    swingvStr = "kHighStr"; break;
-    //   case stdAc::swingv_t::kMiddle:  swingvStr = "kMiddleStr"; break;
-    //   case stdAc::swingv_t::kLow:     swingvStr = "kLowStr"; break;
-    //   case stdAc::swingv_t::kLowest:  swingvStr = "kLowestStr"; break;
-    //   default:                        swingvStr = "kUnknownStr"; break;
-    // }
-    // Serial.println(swingvStr);
-
-    // Serial.print("SwingH: ");
-    // String swinghStr;
-    // switch (decodedIr.swingh) {
-    //   case stdAc::swingh_t::kOff:      swinghStr = "kOffStr"; break;
-    //   case stdAc::swingh_t::kAuto:     swinghStr = "kAutoStr"; break;
-    //   case stdAc::swingh_t::kLeftMax:  swinghStr = "kLeftMaxStr"; break;
-    //   case stdAc::swingh_t::kLeft:     swinghStr = "kLeftStr"; break;
-    //   case stdAc::swingh_t::kMiddle:   swinghStr = "kMiddleStr"; break;
-    //   case stdAc::swingh_t::kRight:    swinghStr = "kRightStr"; break;
-    //   case stdAc::swingh_t::kRightMax: swinghStr = "kRightMaxStr"; break;
-    //   case stdAc::swingh_t::kWide:     swinghStr = "kWideStr"; break;
-    //   default:                         swinghStr = "kUnknownStr"; break;
-    // }
-    // Serial.println(swinghStr);
-
-    //     struct state_t {
-    //   decode_type_t protocol = decode_type_t::UNKNOWN;
-    //   int16_t model = -1;  // `-1` means unused.
-    //   bool power = false;
-    //   stdAc::opmode_t mode = stdAc::opmode_t::kOff;
-    //   float degrees = 25;
-    //   bool celsius = true;
-    //   stdAc::fanspeed_t fanspeed = stdAc::fanspeed_t::kAuto;
-    //   stdAc::swingv_t swingv = stdAc::swingv_t::kOff;
-    //   stdAc::swingh_t swingh = stdAc::swingh_t::kOff;
-    //   bool quiet = false;
-    //   bool turbo = false;
-    //   bool econo = false;
-    //   bool light = false;
-    //   bool filter = false;
-    //   bool clean = false;
-    //   bool beep = false;
-    //   int16_t sleep = -1;  // `-1` means off.
-    //   int16_t clock = -1;  // `-1` means not set.
-    // };
-    
-    broadcastState();
-
-    // yield();  // Feed the WDT as the text output can take a while to print.
-    // Serial.println();    // Blank line between entries
-    // yield();             // Feed the WDT (again)
   }
 }
 
@@ -641,11 +500,6 @@ void loop() {
   }
 
   unsigned long currentMillis = millis();
-
-  // if (currentMillis - refreshPrevMillis > 10000) {
-  //   refreshPrevMillis = currentMillis;
-  //   refreshLoop();
-  // }
 
   if (currentMillis - statusLedPrevMillis >= 1000) {
     statusLedPrevMillis = currentMillis;
