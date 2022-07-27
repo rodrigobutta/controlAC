@@ -46,6 +46,7 @@ DallasTemperature sensors(&oneWire);
 unsigned long sensorPrevMillis = 0;
 
 
+
 // #############################
 // ########## IR READ ##########
 // #############################
@@ -226,8 +227,9 @@ char deviceName[] = "AC Remote Control";
 const std::string tempKey = "temp";
 const std::string modeKey = "mode";
 const std::string fanKey = "fan";
+const std::string currentTempKey = "currentTemp";
 
-bool welcomeBroadcast = false;
+// bool welcomeBroadcast = false;
 
 
 void mqttSend(char* topic, char* message) {
@@ -243,8 +245,6 @@ void broadcastState() {
   serializeJson(state, jsonString);
 
   mqttSend("esp32/ac/state", jsonString);
-
-  // mqttSend("esp32/ac/sensor/state", "{\"temp\":12}");
 }
 
 void sendStateToIr() {
@@ -386,10 +386,10 @@ void mqttReconnect() {
       // Subscribe
       client.subscribe("esp32/ac/set");
 
-      if(welcomeBroadcast == false) {
-        welcomeBroadcast == true;
-        broadcastState();
-      }
+      // if(welcomeBroadcast == false) {
+      //   welcomeBroadcast == true;
+      //   broadcastState();
+      // }
       
     } else {
       Serial.print("failed, rc=");
@@ -447,6 +447,7 @@ void setup() {
   state[tempKey] = 20;
   state[modeKey] = "off";
   state[fanKey] = "max";
+  state[currentTempKey] = 0;
 
   Serial.print("PIN STATUS:");
   Serial.println(STATUS_LED_GPIO);
@@ -465,23 +466,25 @@ void setup() {
 }
 
 
-void refreshLoop() {
-    String modeString = state[modeKey];
-    Serial.print("Mode: ");
-    Serial.print(modeString);
-    Serial.println();
+// void refreshLoop() {
+    // String modeString = state[modeKey];
+    // Serial.print("Mode: ");
+    // Serial.print(modeString);
+    // Serial.println();
 
-    char tempString[8];
-    dtostrf(state[tempKey], 1, 2, tempString);
-    Serial.print("Temperature: ");
-    Serial.print(tempString);
-    Serial.println();
+    // char tempString[8];
+    // dtostrf(state[tempKey], 1, 2, tempString);
+    // Serial.print("Temperature: ");
+    // Serial.print(tempString);
+    // Serial.println();
 
-    String fanString = state[fanKey];
-    Serial.print("Fan: ");
-    Serial.print(fanString);
-    Serial.println();
-}
+    // String fanString = state[fanKey];
+    // Serial.print("Fan: ");
+    // Serial.print(fanString);
+    // Serial.println();
+
+    // broadcastState();
+// }
 
 
 void statusLedLoop() {
@@ -500,13 +503,21 @@ void statusLedLoop() {
 void sensorLoop() {
 
   sensors.requestTemperatures(); 
-  float temperatureC = sensors.getTempCByIndex(0);
-  // float temperatureF = sensors.getTempFByIndex(0);
-  Serial.print(temperatureC);
-  Serial.println("ºC");
-  // Serial.print(temperatureF);
-  // Serial.println("ºF");
+  float newTemp = sensors.getTempCByIndex(0);
 
+  // float newTempRounded = round(newTemp * 10.0 ) / 10.0;
+  int newTempRounded = newTemp;
+
+  if(newTempRounded != state[currentTempKey]) {
+    
+
+    state[currentTempKey] = newTempRounded;
+    
+    broadcastState();
+  }
+
+  //  Serial.print(newTemp);
+  // Serial.println("ºC");
 }
 
 
@@ -631,18 +642,18 @@ void loop() {
 
   unsigned long currentMillis = millis();
 
-  if (currentMillis - refreshPrevMillis > 5000) {
-    refreshPrevMillis = currentMillis;
-    refreshLoop();
-  }
+  // if (currentMillis - refreshPrevMillis > 10000) {
+  //   refreshPrevMillis = currentMillis;
+  //   refreshLoop();
+  // }
 
   if (currentMillis - statusLedPrevMillis >= 1000) {
     statusLedPrevMillis = currentMillis;
     statusLedLoop();
   }
 
-  // if (currentMillis - sensorPrevMillis >= 5000) {
-  //   sensorPrevMillis = currentMillis;
-  //   sensorLoop();
-  // }
+  if (currentMillis - sensorPrevMillis >= 5000) {
+    sensorPrevMillis = currentMillis;
+    sensorLoop();
+  }
 }
