@@ -9,6 +9,10 @@
 #include <IRac.h>
 #include <IRtext.h>
 #include <IRutils.h>
+
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
 #include "settings.h"
 #include "wifiConnection.h"
 
@@ -26,8 +30,20 @@ int statusLedState = LOW;             // statusLedState used to set the LED
 unsigned long statusLedPrevMillis = 0;        // will store last time LED was updated
 
 
+// #############################
+// ######## TEMP SENSOR ########
+// #############################
 
+// GPIO where the DS18B20 is connected to
+const int oneWireBus = 4;     
 
+// Setup a oneWire instance to communicate with any OneWire devices
+OneWire oneWire(oneWireBus);
+
+// Pass our oneWire reference to Dallas Temperature sensor 
+DallasTemperature sensors(&oneWire);
+
+unsigned long sensorPrevMillis = 0;
 
 
 // #############################
@@ -192,7 +208,7 @@ decode_results results;  // Somewhere to store the results
 #define FAN_HI kLgAcFanMax
 
 // ESP8266 GPIO pin to use for IR blaster.
-const uint16_t kIrLed = 4;
+const uint16_t kIrLed = 16;
 // Library initialization, change it according to the imported library file.
 IRLgAc ac(kIrLed);
 
@@ -211,31 +227,32 @@ const std::string tempKey = "temp";
 const std::string modeKey = "mode";
 const std::string fanKey = "fan";
 
-bool sendingIR = false;
+bool welcomeBroadcast = false;
 
 
 void mqttSend(char* topic, char* message) {
-    Serial.print("MQTT SEND: ");
+    Serial.print("Sending MQTT: ");
     Serial.println(message);
     client.publish(topic, message);
 }
 
 void broadcastState() {
+  Serial.println("Broadcasting state to MQTT..");
  
   char jsonString[256]; // max 256 o no se manda el MQTT!!!!  
   serializeJson(state, jsonString);
 
   mqttSend("esp32/ac/state", jsonString);
 
-  mqttSend("esp32/ac/sensor/state", "{\"temp\":12}");
+  // mqttSend("esp32/ac/sensor/state", "{\"temp\":12}");
 }
 
 void sendStateToIr() {
+  Serial.println("Sending IR..");
 
-  sendingIR = true;
-  // delay(100);
+  // DISABLE INNNN ***
 
-  Serial.println("Send State to AC");
+  irrecv.disableIRIn();
 
   if(state[modeKey] == "off") {
     ac.off();
@@ -295,14 +312,17 @@ void sendStateToIr() {
     
   ac.send();
 
-  // delay(100);
-  sendingIR = false;
+  delay(100);
+  irrecv.enableIRIn();
+
+  // ENABLE INNNNNN IR
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived on topic: ");
-  Serial.print(topic);
-  Serial.print(". Message: ");
+  Serial.println("Receiving MQTT..");
+  Serial.print("Topic: ");
+  Serial.println(topic);
+  Serial.print("Payload: ");
   
   char payloadString[length+1];
  
@@ -365,6 +385,11 @@ void mqttReconnect() {
 
       // Subscribe
       client.subscribe("esp32/ac/set");
+
+      if(welcomeBroadcast == false) {
+        welcomeBroadcast == true;
+        broadcastState();
+      }
       
     } else {
       Serial.print("failed, rc=");
@@ -412,27 +437,50 @@ void setup() {
   digitalWrite(STATUS_LED_GPIO, HIGH);
 
   Serial.begin(115200);
-  Serial.println("Hello Rodrigo Butta");
+  Serial.println("Rodrigo Butta AC Controller");
 
   wifiSetup();
   mqttSetup();
   irSetup();
+
+
+  state[tempKey] = 20;
+  state[modeKey] = "off";
+  state[fanKey] = "max";
+
+  Serial.print("PIN STATUS:");
+  Serial.println(STATUS_LED_GPIO);
+
+  Serial.print("PIN IR TRANSMITTER:");
+  Serial.println(kIrLed);
+
+  Serial.print("PIN IR RECEIVER:");
+  Serial.println(kRecvPin);
+
+  Serial.print("PIN TEMP SENSOR:");
+  Serial.println(oneWireBus);
+
+  // Start the DS18B20 sensor
+  sensors.begin();
 }
 
 
 void refreshLoop() {
-    // Convert the value to a char array
-    // char tempString[8];
-    // dtostrf(state[tempKey], 1, 2, tempString);
-    // Serial.print("Temperature: ");
-    // Serial.print(tempString);
-    // Serial.println();
+    String modeString = state[modeKey];
+    Serial.print("Mode: ");
+    Serial.print(modeString);
+    Serial.println();
 
-    // char modeString[8];
-    // dtostrf(state[modeKey], 1, 2, modeString);
-    // Serial.print("Mode: ");
-    // Serial.print(modeString);
-    // Serial.println();
+    char tempString[8];
+    dtostrf(state[tempKey], 1, 2, tempString);
+    Serial.print("Temperature: ");
+    Serial.print(tempString);
+    Serial.println();
+
+    String fanString = state[fanKey];
+    Serial.print("Fan: ");
+    Serial.print(fanString);
+    Serial.println();
 }
 
 
@@ -449,8 +497,23 @@ void statusLedLoop() {
 }
 
 
+void sensorLoop() {
+
+  sensors.requestTemperatures(); 
+  float temperatureC = sensors.getTempCByIndex(0);
+  // float temperatureF = sensors.getTempFByIndex(0);
+  Serial.print(temperatureC);
+  Serial.println("ºC");
+  // Serial.print(temperatureF);
+  // Serial.println("ºF");
+
+}
+
+
 void irReceiverLoop() {
-  if (sendingIR == false && irrecv.decode(&results)) {   
+  if (irrecv.decode(&results)) {   
+    Serial.println("Receiving IR..");
+
     stdAc::state_t decodedIr, p; 
     IRAcUtils::decodeToState(&results, &decodedIr, &p);
 
@@ -547,7 +610,7 @@ void irReceiverLoop() {
     //   int16_t sleep = -1;  // `-1` means off.
     //   int16_t clock = -1;  // `-1` means not set.
     // };
-
+    
     broadcastState();
 
     // yield();  // Feed the WDT as the text output can take a while to print.
@@ -561,25 +624,25 @@ void loop() {
 
   irReceiverLoop();
   
-  unsigned long currentMillis = millis();
-
-
-  if (currentMillis - refreshPrevMillis > 5000) {
-    refreshPrevMillis = currentMillis;
-    
-    refreshLoop();
-  }
-
   long interval = 2000;
   if(!client.connected()) {
     interval = 300;
   }
 
-  if (currentMillis - statusLedPrevMillis >= 1000) {
-    statusLedPrevMillis = currentMillis;
+  unsigned long currentMillis = millis();
 
-    statusLedLoop();
-
+  if (currentMillis - refreshPrevMillis > 5000) {
+    refreshPrevMillis = currentMillis;
+    refreshLoop();
   }
 
+  if (currentMillis - statusLedPrevMillis >= 1000) {
+    statusLedPrevMillis = currentMillis;
+    statusLedLoop();
+  }
+
+  // if (currentMillis - sensorPrevMillis >= 5000) {
+  //   sensorPrevMillis = currentMillis;
+  //   sensorLoop();
+  // }
 }
