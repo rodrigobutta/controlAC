@@ -35,7 +35,7 @@ unsigned long statusLedPrevMillis = 0;        // will store last time LED was up
 // #############################
 
 // GPIO where the DS18B20 is connected to
-const int oneWireBus = 4;     
+const int oneWireBus = 13;     
 
 // Setup a oneWire instance to communicate with any OneWire devices
 OneWire oneWire(oneWireBus);
@@ -147,7 +147,7 @@ decode_results results;  // Somewhere to store the results
 #define FAN_HI kLgAcFanMax
 
 // ESP8266 GPIO pin to use for IR blaster.
-const uint16_t kIrLed = 16;
+const uint16_t kIrLed = 17;
 // Library initialization, change it according to the imported library file.
 IRLgAc ac(kIrLed);
 
@@ -168,7 +168,7 @@ void mqttSend(char* topic, char* message) {
 
 void broadcastState() {
 
-  if(state[tempKey] == 0) {
+  if(state[tempKey] == 0 && state[modeKey] != "off") {
     Serial.println("Cancel broadcast due to lack of state data.");
     return;
   }
@@ -432,7 +432,7 @@ void irReceiverLoop() {
     Serial.print("Protocol: "); Serial.println(decodedIr.protocol);
     Serial.print("Model: "); Serial.println(decodedIr.model);
 
-    if(decodedIr.protocol != decode_type_t::LG2 || decodedIr.model != 3) { // 3 es AKB74955603
+    if(decodedIr.protocol != decode_type_t::LG2 || decodedIr.model != 3 && decodedIr.model != 2) { // 3 es AKB74955603
       Serial.println("Not the spected remote");
       return;
     }
